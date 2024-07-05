@@ -1,3 +1,5 @@
+import numpy as np
+import multiprocessing as mp
 import time
 
 
@@ -27,7 +29,7 @@ def jacobi(a, n):
     t = 1
     while a != 0:
         while a % 2 == 0:
-            a /= 2
+            a //= 2
             r = n % 8
             if r == 3 or r == 5:
                 t = -t
@@ -71,42 +73,67 @@ def V(P, Q):
         v1 = v3
 
 
+def lucas_pseudoprime_U_worker(n, P, Q, t, result_queue):
+    u = U(P, Q)
+    for _ in range(t):
+        next(u)
+    if next(u) % n == 0:
+        result_queue.put(True)
+    else:
+        result_queue.put(False)
+
+
+def lucas_pseudoprime_V_worker(n, P, Q, t, s, result_queue):
+    v = V(P, Q)
+    next(v)
+    for i in range(s):
+        for _ in range(int(pow(2, i - 1)) * t + 1, pow(2, i) * t):
+            next(v)
+        tar = next(v)
+        if tar % n == 0:
+            result_queue.put(True)
+            return
+    result_queue.put(False)
+
+
 def lucas_pseudoprime(n, P, Q):
     s = 0
     t = n + 1
     while t % 2 == 0:
         s += 1
         t = t // 2
-    u = U(P, Q)
-    for _ in range(t):
-        u.__next__()
-    if u.__next__() % n == 0:
-        return True
-    else:
-        v = V(P, Q)
-        v.__next__()
-        for i in range(s):
-            for _ in range(int(pow(2, i - 1)) * t + 1,pow(2, i) * t):
-                v.__next__()
-            tar = v.__next__()
-            if tar % n == 0:
-                return True
+
+    result_queue = mp.Queue()
+    processes = [
+        mp.Process(target=lucas_pseudoprime_U_worker, args=(n, P, Q, t, result_queue)),
+        mp.Process(target=lucas_pseudoprime_V_worker, args=(n, P, Q, t, s, result_queue))
+    ]
+
+    for p in processes:
+        p.start()
+
+    for p in processes:
+        p.join()
+
+    while not result_queue.empty():
+        if result_queue.get():
+            return True
     return False
 
 
 def baillie_psw_primality_test(num):
-
     if num == 2:
-        return 2
+        return True
     elif num % 2 == 0:
         return False
 
-    for i in range(3, min(int(pow(num, 1/2)+1), 1000), 2):
+    for i in range(3, min(int(pow(num, 1 / 2) + 1), 1000), 2):
         if num % i == 0:
             return False
 
     if not miller_rabin_primality_test(num, 2):
         return False
+
     D = 5
     t = time.time()
     check = True
@@ -114,7 +141,6 @@ def baillie_psw_primality_test(num):
         if jacobi(D, num) == -1:
             P = 1
             Q = (1 - D) // 4
-            print(jacobi(D, num), D, P, Q)
             return lucas_pseudoprime(num, P, Q)
 
         D = gen_next(D)
@@ -125,4 +151,4 @@ def baillie_psw_primality_test(num):
 
 
 if __name__ == "__main__":
-    print(baillie_psw_primality_test(363))
+    print(baillie_psw_primality_test(2074722246773485207821695222107608587480996474721117292752992589912196684750549658310084416732550077))
